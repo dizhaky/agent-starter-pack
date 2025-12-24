@@ -294,7 +294,8 @@ def get_overwrite_folders(agent_directory: str) -> list[str]:
 
 
 TEMPLATE_CONFIG_FILE = "templateconfig.yaml"
-DEPLOYMENT_FOLDERS = ["cloud_run", "agent_engine"]
+DEPLOYMENT_TARGETS = ["cloud_run", "agent_engine"]
+SUPPORTED_LANGUAGES = ["python", "go"]
 DEFAULT_FRONTEND = "None"
 
 
@@ -377,6 +378,41 @@ def load_template_config(template_dir: pathlib.Path) -> dict[str, Any]:
     except Exception as e:
         logging.error(f"Error loading template config: {e}")
         return {}
+
+
+def get_agent_language(
+    agent_name: str, remote_config: dict[str, Any] | None = None
+) -> str:
+    """Get the programming language for the selected agent.
+
+    Args:
+        agent_name: Name of the agent
+        remote_config: Optional remote template configuration
+
+    Returns:
+        Language string ('python' or 'go'), defaults to 'python'
+    """
+    if remote_config:
+        config = remote_config
+    else:
+        template_path = (
+            pathlib.Path(__file__).parent.parent.parent
+            / "agents"
+            / agent_name
+            / ".template"
+        )
+        config = load_template_config(template_path)
+
+    if not config:
+        return "python"
+
+    language = config.get("settings", {}).get("language", "python")
+    if language not in SUPPORTED_LANGUAGES:
+        logging.warning(
+            f"Unsupported language '{language}' for agent {agent_name}, defaulting to python"
+        )
+        return "python"
+    return language
 
 
 def get_deployment_targets(
@@ -924,8 +960,6 @@ def process_template(
         f"agent path contents: {list(agent_path.iterdir()) if agent_path.exists() else 'N/A'}"
     )
 
-    base_template_path = pathlib.Path(__file__).parent.parent.parent / "base_template"
-
     # Use provided output_dir or current directory
     destination_dir = output_dir if output_dir else pathlib.Path.cwd()
 
@@ -954,44 +988,86 @@ def process_template(
             project_template = cookiecutter_template / "{{cookiecutter.project_name}}"
             project_template.mkdir(parents=True)
 
-            # 1. First copy base template files
-            base_template_path = (
-                pathlib.Path(__file__).parent.parent.parent / "base_template"
-            )
-            # Get agent directory from config early for use in file copying
-            # Load config early to get agent_directory
+            # Get agent directory and language from config early for use in file copying
             if remote_config:
                 early_config = remote_config
             else:
                 template_path = pathlib.Path(template_dir)
                 early_config = load_template_config(template_path)
             agent_directory = get_agent_directory(early_config, cli_overrides)
-            copy_files(
-                base_template_path,
-                project_template,
-                agent_name,
-                overwrite=True,
-                agent_directory=agent_directory,
+            language = get_agent_language(agent_name, remote_config)
+
+            # Base paths for template structure
+            base_templates_path = (
+                pathlib.Path(__file__).parent.parent.parent / "base_templates"
             )
-            logging.debug(f"1. Copied base template from {base_template_path}")
+
+            # 1. First copy shared base template files (language-agnostic)
+            shared_base_path = base_templates_path / "_shared"
+            if shared_base_path.exists():
+                copy_files(
+                    shared_base_path,
+                    project_template,
+                    agent_name,
+                    overwrite=True,
+                    agent_directory=agent_directory,
+                )
+                logging.debug(f"1a. Copied shared base template from {shared_base_path}")
+
+            # 1b. Copy language-specific base template files
+            language_base_path = base_templates_path / language
+            if language_base_path.exists():
+                copy_files(
+                    language_base_path,
+                    project_template,
+                    agent_name,
+                    overwrite=True,
+                    agent_directory=agent_directory,
+                )
+                logging.debug(
+                    f"1b. Copied {language} base template from {language_base_path}"
+                )
+            else:
+                raise FileNotFoundError(
+                    f"Language base template not found: {language_base_path}"
+                )
 
             # 2. Process deployment target if specified
-            if deployment_target and deployment_target in DEPLOYMENT_FOLDERS:
-                deployment_path = (
-                    pathlib.Path(__file__).parent.parent.parent
-                    / "deployment_targets"
-                    / deployment_target
+            if deployment_target and deployment_target in DEPLOYMENT_TARGETS:
+                deployment_targets_path = (
+                    pathlib.Path(__file__).parent.parent.parent / "deployment_targets"
                 )
-                if deployment_path.exists():
+
+                # 2a. Copy shared deployment target files (language-agnostic)
+                shared_deployment_path = (
+                    deployment_targets_path / deployment_target / "_shared"
+                )
+                if shared_deployment_path.exists():
                     copy_files(
-                        deployment_path,
+                        shared_deployment_path,
                         project_template,
                         agent_name=agent_name,
                         overwrite=True,
                         agent_directory=agent_directory,
                     )
                     logging.debug(
-                        f"2. Processed deployment files for target: {deployment_target}"
+                        f"2a. Copied shared deployment files from {shared_deployment_path}"
+                    )
+
+                # 2b. Copy language-specific deployment target files
+                language_deployment_path = (
+                    deployment_targets_path / deployment_target / language
+                )
+                if language_deployment_path.exists():
+                    copy_files(
+                        language_deployment_path,
+                        project_template,
+                        agent_name=agent_name,
+                        overwrite=True,
+                        agent_directory=agent_directory,
+                    )
+                    logging.debug(
+                        f"2b. Copied {language} deployment files from {language_deployment_path}"
                     )
 
             # 3. Copy data ingestion files if needed
@@ -1129,6 +1205,7 @@ def process_template(
                 "is_adk": "adk" in tags,
                 "is_adk_live": "adk_live" in tags,
                 "is_a2a": "a2a" in tags,
+                "language": language,
                 "deployment_target": deployment_target or "",
                 "cicd_runner": cicd_runner or "google_cloud_build",
                 "session_type": session_type or "",
@@ -1151,6 +1228,7 @@ def process_template(
                     "*.jsx",  # Don't render JavaScript React files
                     "*.js",  # Don't render JavaScript files
                     "*.css",  # Don't render CSS files
+                    "*.sum",  # Don't render Go sum files
                     "frontend/**/*",  # Don't render frontend directory recursively
                     "notebooks/*",  # Don't render notebooks directory
                     ".git/*",  # Don't render git directory
@@ -1300,7 +1378,8 @@ def process_template(
                             )
 
                             # Try to use base template file instead of templated file
-                            base_file = base_template_path / item.name
+                            # Use language-specific base path
+                            base_file = language_base_path / item.name
                             if base_file.exists():
                                 logging.debug(
                                     f"{item.name} conflict: preserving existing {item.name}, using base template {item.name} as starter_pack_{base_name}{extension}"
@@ -1439,8 +1518,10 @@ def process_template(
             # Render and merge Makefiles.
             # If it's a local template, remote_template_path will be None,
             # and only the base Makefile will be rendered.
+            # Use language-specific base path for Makefile
+            makefile_base_path = language_base_path
             render_and_merge_makefiles(
-                base_template_path=base_template_path,
+                base_template_path=makefile_base_path,
                 final_destination=final_destination,
                 cookiecutter_config=cookiecutter_config,
                 remote_template_path=remote_template_path,

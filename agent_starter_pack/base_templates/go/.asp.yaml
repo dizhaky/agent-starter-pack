@@ -1,0 +1,9 @@
+# Agent Starter Pack Configuration
+# This file is used by the 'enhance' command to identify project settings
+
+name: "{{cookiecutter.project_name}}"
+version: "{{cookiecutter.asp_version}}"
+language: "go"
+base_template: "{{cookiecutter.agent_name}}"
+deployment_target: "{{cookiecutter.deployment_target}}"
+cicd_runner: "{{cookiecutter.cicd_runner}}"

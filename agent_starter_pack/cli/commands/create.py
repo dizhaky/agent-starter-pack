@@ -39,6 +39,7 @@ from ..utils.remote_template import (
 )
 from ..utils.template import (
     add_base_template_dependencies_interactively,
+    get_agent_language,
     get_available_agents,
     get_deployment_targets,
     get_template_path,
@@ -667,7 +668,20 @@ def create(
                         f"Applied CLI overrides to local template config: {cli_overrides}"
                     )
         # Data ingestion and datastore selection
-        if include_data_ingestion or datastore:
+        # Check language early for data ingestion validation
+        early_agent_language = get_agent_language(final_agent)
+
+        # Go agents don't support data ingestion
+        if early_agent_language == "go":
+            if include_data_ingestion or datastore:
+                console.print(
+                    "Warning: Go agents do not support data ingestion. "
+                    "Ignoring --include-data-ingestion and --datastore flags.",
+                    style="yellow",
+                )
+                include_data_ingestion = False
+                datastore = None
+        elif include_data_ingestion or datastore:
             include_data_ingestion = True
             if not datastore:
                 if auto_approve:
@@ -737,51 +751,64 @@ def create(
         # Session type validation and selection (only for agents that require session management)
         final_session_type = session_type
 
-        # Check if agent requires session management
-        requires_session = config.get("settings", {}).get("requires_session", False)
+        # Get agent language for language-specific validation
+        agent_language = get_agent_language(deployment_agent_name, remote_config)
 
-        # Session type selection is only available for these agents on cloud_run
-        session_type_supported_agents = ("adk_base", "agentic_rag")
-
-        if requires_session:
-            if final_deployment == "agent_engine" and session_type:
-                console.print(
-                    "Error: --session-type cannot be used with agent_engine deployment target. "
-                    "Agent Engine handles session management internally.",
-                    style="bold red",
-                )
-                return
-
-            if final_deployment == "cloud_run":
-                if deployment_agent_name in session_type_supported_agents:
-                    # Allow session type selection for supported agents
-                    if not session_type:
-                        if auto_approve:
-                            final_session_type = "in_memory"
-                            console.print(
-                                "Info: --session-type not specified. Defaulting to 'in_memory' in auto-approve mode.",
-                                style="yellow",
-                            )
-                        else:
-                            final_session_type = prompt_session_type_selection()
-                else:
-                    # For unsupported agents, always use in_memory
-                    final_session_type = "in_memory"
-                    if session_type and session_type != "in_memory":
-                        console.print(
-                            f"Warning: Session type selection is only available for {', '.join(session_type_supported_agents)} agents. "
-                            "Using in-memory sessions for this agent.",
-                            style="yellow",
-                        )
-        else:
-            # Agents that don't require session management always use in-memory sessions
+        # Go agents only support in-memory sessions
+        if agent_language == "go":
             final_session_type = "in_memory"
             if session_type and session_type != "in_memory":
                 console.print(
-                    "Warning: Session type options are only available for agents that require session management. "
+                    "Warning: Go agents only support in-memory sessions. "
                     "Using in-memory sessions for this agent.",
                     style="yellow",
                 )
+        else:
+            # Python agents - check if session management is required
+            requires_session = config.get("settings", {}).get("requires_session", False)
+
+            # Session type selection is only available for these agents on cloud_run
+            session_type_supported_agents = ("adk_base", "agentic_rag")
+
+            if requires_session:
+                if final_deployment == "agent_engine" and session_type:
+                    console.print(
+                        "Error: --session-type cannot be used with agent_engine deployment target. "
+                        "Agent Engine handles session management internally.",
+                        style="bold red",
+                    )
+                    return
+
+                if final_deployment == "cloud_run":
+                    if deployment_agent_name in session_type_supported_agents:
+                        # Allow session type selection for supported agents
+                        if not session_type:
+                            if auto_approve:
+                                final_session_type = "in_memory"
+                                console.print(
+                                    "Info: --session-type not specified. Defaulting to 'in_memory' in auto-approve mode.",
+                                    style="yellow",
+                                )
+                            else:
+                                final_session_type = prompt_session_type_selection()
+                    else:
+                        # For unsupported agents, always use in_memory
+                        final_session_type = "in_memory"
+                        if session_type and session_type != "in_memory":
+                            console.print(
+                                f"Warning: Session type selection is only available for {', '.join(session_type_supported_agents)} agents. "
+                                "Using in-memory sessions for this agent.",
+                                style="yellow",
+                            )
+            else:
+                # Agents that don't require session management always use in-memory sessions
+                final_session_type = "in_memory"
+                if session_type and session_type != "in_memory":
+                    console.print(
+                        "Warning: Session type options are only available for agents that require session management. "
+                        "Using in-memory sessions for this agent.",
+                        style="yellow",
+                    )
 
         if debug and final_session_type:
             logging.debug(f"Selected session type: {final_session_type}")
