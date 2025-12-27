@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-description: "A base ReAct agent built with Google's ADK for Go"
+description: "Simple ReAct agent"
 example_question: "What's the weather in San Francisco?"
 settings:
   language: "go"

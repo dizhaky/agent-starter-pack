@@ -302,20 +302,23 @@ DEFAULT_FRONTEND = "None"
 def get_available_agents(deployment_target: str | None = None) -> dict:
     """Dynamically load available agents from the agents directory.
 
+    Returns agents grouped by language and framework for display purposes.
+    Each agent dict includes: name, description, language, framework.
+
     Args:
         deployment_target: Optional deployment target to filter agents
     """
-    # Define priority agents that should appear first
-    PRIORITY_AGENTS = [
-        "adk_base",
-        "adk_a2a_base",
-        "adk_live",
-        "agentic_rag",
-        "langgraph_base",
-    ]
+    # Define display order for agents within each group
+    PRIORITY_ORDER = {
+        "adk_base": 0,
+        "adk_a2a_base": 1,
+        "adk_live": 2,
+        "agentic_rag": 3,
+        "langgraph_base": 0,
+        "adk_base_go": 0,
+    }
 
     agents_list = []
-    priority_agents_dict = dict.fromkeys(PRIORITY_AGENTS)  # Track priority agents
     agents_dir = pathlib.Path(__file__).parent.parent.parent / "agents"
 
     for agent_dir in agents_dir.iterdir():
@@ -326,41 +329,58 @@ def get_available_agents(deployment_target: str | None = None) -> dict:
                     with open(template_config_path, encoding="utf-8") as f:
                         config = yaml.safe_load(f)
                     agent_name = agent_dir.name
+                    settings = config.get("settings", {})
 
                     # Skip if deployment target specified and agent doesn't support it
                     if deployment_target:
-                        targets = config.get("settings", {}).get(
-                            "deployment_targets", []
-                        )
+                        targets = settings.get("deployment_targets", [])
                         if isinstance(targets, str):
                             targets = [targets]
                         if deployment_target not in targets:
                             continue
 
-                    description = config.get("description", "No description available")
-                    agent_info = {"name": agent_name, "description": description}
+                    # Determine language (default to python)
+                    language = settings.get("language", "python")
 
-                    # Add to priority list or regular list based on agent name
-                    if agent_name in PRIORITY_AGENTS:
-                        priority_agents_dict[agent_name] = agent_info
+                    # Determine framework from tags
+                    tags = settings.get("tags", [])
+                    if "langgraph" in tags:
+                        framework = "langgraph"
+                    elif "adk" in tags:
+                        framework = "adk"
                     else:
-                        agents_list.append(agent_info)
+                        framework = "other"
+
+                    description = config.get("description", "No description available")
+                    priority = PRIORITY_ORDER.get(agent_name, 100)
+
+                    agent_info = {
+                        "name": agent_name,
+                        "description": description,
+                        "language": language,
+                        "framework": framework,
+                        "priority": priority,
+                    }
+                    agents_list.append(agent_info)
                 except Exception as e:
                     logging.warning(f"Could not load agent from {agent_dir}: {e}")
 
-    # Sort the non-priority agents
-    agents_list.sort(key=lambda x: x["name"])
+    # Define group order: Python ADK, Python LangGraph, Go ADK, Other
+    GROUP_ORDER = {
+        ("python", "adk"): 0,
+        ("python", "langgraph"): 1,
+        ("go", "adk"): 2,
+    }
 
-    # Create priority agents list in the exact order specified
-    priority_agents = [
-        info for name, info in priority_agents_dict.items() if info is not None
-    ]
+    def sort_key(agent: dict) -> tuple:
+        group = (agent["language"], agent["framework"])
+        group_order = GROUP_ORDER.get(group, 99)
+        return (group_order, agent["priority"], agent["name"])
 
-    # Combine priority agents with regular agents
-    combined_agents = priority_agents + agents_list
+    agents_list.sort(key=sort_key)
 
     # Convert to numbered dictionary starting from 1
-    agents = {i + 1: agent for i, agent in enumerate(combined_agents)}
+    agents = {i + 1: agent for i, agent in enumerate(agents_list)}
 
     return agents
 
@@ -446,12 +466,12 @@ def prompt_deployment_target(
     # Define deployment target friendly names and descriptions
     TARGET_INFO = {
         "agent_engine": {
-            "display_name": "Vertex AI Agent Engine",
-            "description": "Vertex AI Managed platform for scalable agent deployments",
+            "display_name": "agent_engine",
+            "description": "Vertex AI managed platform",
         },
         "cloud_run": {
-            "display_name": "Cloud Run",
-            "description": "GCP Serverless container execution",
+            "display_name": "cloud_run",
+            "description": "GCP serverless containers",
         },
     }
 
@@ -460,11 +480,13 @@ def prompt_deployment_target(
 
     console = Console()
     console.print("\n> Please select a deployment target:")
+    console.print("\n  [bold cyan]☁️  Deployment Targets[/]")
     for idx, target in enumerate(targets, 1):
         info = TARGET_INFO.get(target, {})
         display_name = info.get("display_name", target)
         description = info.get("description", "")
-        console.print(f"{idx}. [bold]{display_name}[/] - [dim]{description}[/]")
+        name_padded = display_name.ljust(14)
+        console.print(f"     {idx}. [bold]{name_padded}[/] [dim]{description}[/]")
 
     choice = IntPrompt.ask(
         "\nEnter the number of your deployment target choice",
@@ -480,24 +502,24 @@ def prompt_session_type_selection() -> str:
 
     session_types = {
         "in_memory": {
-            "display_name": "In-memory session",
-            "description": "Session data stored in memory - ideal for stateless applications",
+            "display_name": "in_memory",
+            "description": "Stateless, data in memory",
         },
         "cloud_sql": {
-            "display_name": "Cloud SQL (PostgreSQL)",
-            "description": "Managed PostgreSQL database for robust session persistence",
+            "display_name": "cloud_sql",
+            "description": "PostgreSQL persistence",
         },
         "agent_engine": {
-            "display_name": "Vertex AI Agent Engine",
-            "description": "Managed session service that automatically handles conversation history",
+            "display_name": "agent_engine",
+            "description": "Managed session service",
         },
     }
 
     console.print("\n> Please select a session type:")
+    console.print("\n  [bold cyan]💾 Session Types[/]")
     for idx, (_key, info) in enumerate(session_types.items(), 1):
-        console.print(
-            f"{idx}. [bold]{info['display_name']}[/] - [dim]{info['description']}[/]"
-        )
+        name_padded = info["display_name"].ljust(14)
+        console.print(f"     {idx}. [bold]{name_padded}[/] [dim]{info['description']}[/]")
 
     choice = IntPrompt.ask(
         "\nEnter the number of your session type choice",
@@ -506,6 +528,22 @@ def prompt_session_type_selection() -> str:
     )
 
     return list(session_types.keys())[choice - 1]
+
+
+def _display_datastore_menu(console: Console) -> str:
+    """Display the datastore selection menu and return the selected type."""
+    console.print("\n> Please select a datastore:")
+    console.print("\n  [bold cyan]🗄️  Datastores[/]")
+    for i, (key, info) in enumerate(DATASTORES.items(), 1):
+        name_padded = key.ljust(24)
+        console.print(f"     {i}. [bold]{name_padded}[/] [dim]{info['name']}[/]")
+
+    choice = Prompt.ask(
+        "\nEnter the number of your choice",
+        choices=[str(i) for i in range(1, len(DATASTORES) + 1)],
+        default="1",
+    )
+    return list(DATASTORES.keys())[int(choice) - 1]
 
 
 def prompt_datastore_selection(
@@ -521,23 +559,7 @@ def prompt_datastore_selection(
 
     # If this is from CLI flag, skip the "would you like to include" prompt
     if from_cli_flag:
-        console.print("\n> Please select a datastore type for your data:")
-
-        # Display options with descriptions
-        for i, (_key, info) in enumerate(DATASTORES.items(), 1):
-            console.print(
-                f"{i}. [bold]{info['name']}[/] - [dim]{info['description']}[/]"
-            )
-
-        choice = Prompt.ask(
-            "\nEnter the number of your choice",
-            choices=[str(i) for i in range(1, len(DATASTORES) + 1)],
-            default="1",
-        )
-
-        # Convert choice number to datastore type
-        datastore_type = list(DATASTORES.keys())[int(choice) - 1]
-        return datastore_type
+        return _display_datastore_menu(console)
 
     # Otherwise, proceed with normal flow
     template_path = (
@@ -552,22 +574,7 @@ def prompt_datastore_selection(
         # If requires_data_ingestion is true, prompt for datastore type without asking if they want it
         if config.get("settings", {}).get("requires_data_ingestion"):
             console.print("\n> This agent includes a data ingestion pipeline.")
-            console.print("> Please select a datastore type for your data:")
-
-            # Display options with descriptions
-            for i, (_key, info) in enumerate(DATASTORES.items(), 1):
-                console.print(
-                    f"{i}. [bold]{info['name']}[/] - [dim]{info['description']}[/]"
-                )
-            choice = Prompt.ask(
-                "\nEnter the number of your choice",
-                choices=[str(i) for i in range(1, len(DATASTORES) + 1)],
-                default="1",
-            )
-
-            # Convert choice number to datastore type
-            datastore_type = list(DATASTORES.keys())[int(choice) - 1]
-            return datastore_type
+            return _display_datastore_menu(console)
 
         # Only prompt if the agent has optional data ingestion support
         if "requires_data_ingestion" in config.get("settings", {}):
@@ -581,41 +588,10 @@ def prompt_datastore_selection(
             )
 
             if include:
-                console.print("\n> Please select a datastore type for your data:")
-
-                # Display options with descriptions
-                for i, (_key, info) in enumerate(DATASTORES.items(), 1):
-                    console.print(
-                        f"{i}. [bold]{info['name']}[/] - [dim]{info['description']}[/]"
-                    )
-
-                choice = Prompt.ask(
-                    "\nEnter the number of your choice",
-                    choices=[str(i) for i in range(1, len(DATASTORES) + 1)],
-                    default="1",
-                )
-
-                # Convert choice number to datastore type
-                datastore_type = list(DATASTORES.keys())[int(choice) - 1]
-                return datastore_type
+                return _display_datastore_menu(console)
 
     # If we get here, we need to prompt for datastore selection for explicit --include-data-ingestion flag
-    console.print(
-        "\n> Please select a datastore type for your data ingestion pipeline:"
-    )
-    # Display options with descriptions
-    for i, (_key, info) in enumerate(DATASTORES.items(), 1):
-        console.print(f"{i}. [bold]{info['name']}[/] - [dim]{info['description']}[/]")
-
-    choice = Prompt.ask(
-        "\nEnter the number of your choice",
-        choices=[str(i) for i in range(1, len(DATASTORES) + 1)],
-        default="1",
-    )
-
-    # Convert choice number to datastore type
-    datastore_type = list(DATASTORES.keys())[int(choice) - 1]
-    return datastore_type
+    return _display_datastore_menu(console)
 
 
 def prompt_cicd_runner_selection() -> str:
@@ -624,24 +600,24 @@ def prompt_cicd_runner_selection() -> str:
 
     cicd_runners = {
         "skip": {
-            "display_name": "Simple",
-            "description": "Minimal - no CI/CD or Terraform, add later with 'enhance'",
+            "display_name": "simple",
+            "description": "No CI/CD, add later with 'enhance'",
         },
         "google_cloud_build": {
-            "display_name": "Google Cloud Build",
-            "description": "Fully managed CI/CD, deeply integrated with GCP for fast, consistent builds and deployments.",
+            "display_name": "google_cloud_build",
+            "description": "Fully managed, GCP-integrated",
         },
         "github_actions": {
-            "display_name": "GitHub Actions",
-            "description": "GitHub Actions: CI/CD with secure workload identity federation directly in GitHub.",
+            "display_name": "github_actions",
+            "description": "Workload identity federation",
         },
     }
 
     console.print("\n> Please select a CI/CD runner:")
+    console.print("\n  [bold cyan]🔧 CI/CD Options[/]")
     for idx, (_key, info) in enumerate(cicd_runners.items(), 1):
-        console.print(
-            f"{idx}. [bold]{info['display_name']}[/] - [dim]{info['description']}[/]"
-        )
+        name_padded = info["display_name"].ljust(20)
+        console.print(f"     {idx}. [bold]{name_padded}[/] [dim]{info['description']}[/]")
 
     choice = IntPrompt.ask(
         "\nEnter the number of your CI/CD runner choice",

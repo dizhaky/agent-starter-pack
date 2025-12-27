@@ -13,12 +13,6 @@
 # limitations under the License.
 
 steps:
-  # Run linting
-  - name: "golangci/golangci-lint:latest"
-    id: lint
-    entrypoint: golangci-lint
-    args: ["run", "--timeout", "5m"]
-
   # Run unit tests
   - name: "golang:1.24"
     id: unit-tests

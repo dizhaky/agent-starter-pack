@@ -1004,23 +1004,27 @@ def create(
                 f"   See data_ingestion/README.md for more info\n"
                 f"[bold white]=================================[/bold white]\n"
             )
-        console.print("\n> Success! Your agent project is ready.")
+        console.print("\n[bold green]✅ Success![/] Your agent project is ready.\n")
+
+        console.print("[bold cyan]📖 Documentation[/]")
+        console.print(f"   README:    [cyan]cat {cd_path}/README.md[/]")
         console.print(
-            f"\n📖 Project README: [cyan]cat {cd_path}/README.md[/]"
-            "\n   Online Development Guide: [cyan][link=https://goo.gle/asp-dev]https://goo.gle/asp-dev[/link][/cyan]"
+            "   Dev Guide: [cyan][link=https://goo.gle/asp-dev]https://goo.gle/asp-dev[/link][/cyan]"
         )
+
         # Show enhance hint for prototype mode
         if final_cicd_runner == "skip":
             console.print(
-                "\n💡 Once ready for production, run: [cyan]uvx agent-starter-pack enhance[/]"
+                "\n[bold cyan]💡 Tip[/]\n"
+                "   Once ready for production, run: [cyan]uvx agent-starter-pack enhance[/]"
             )
-        # Determine the correct path to display based on whether output_dir was specified
-        console.print("\n🚀 To get started, run the following command:")
 
+        # Determine the correct path to display based on whether output_dir was specified
         # Check if the agent has a 'dev' command in its settings
         interactive_command = config.get("settings", {}).get(
             "interactive_command", "playground"
         )
+        console.print("\n[bold cyan]🚀 Get Started[/]")
         console.print(
             f"   [bold bright_green]cd {cd_path} && make install && make {interactive_command}[/]"
         )
@@ -1037,7 +1041,7 @@ def prompt_region_confirmation(
 ) -> str:
     """Prompt user to confirm or change the default region."""
     new_region = Prompt.ask(
-        "\nEnter desired GCP region (Gemini uses global endpoint by default)",
+        "\n🌍 Enter GCP region (Gemini uses global endpoint)",
         default=default_region,
         show_default=True,
     )
@@ -1046,7 +1050,7 @@ def prompt_region_confirmation(
 
 
 def display_agent_selection(deployment_target: str | None = None) -> str:
-    """Display available agents and prompt for selection."""
+    """Display available agents grouped by language/framework and prompt for selection."""
     agents = get_available_agents(deployment_target=deployment_target)
 
     if not agents:
@@ -1056,16 +1060,34 @@ def display_agent_selection(deployment_target: str | None = None) -> str:
             )
         raise click.ClickException("No valid agents found")
 
-    console.print("\n> Please select a agent to get started:")
+    # Group headers for display
+    GROUP_HEADERS = {
+        ("python", "adk"): "🐍 Python (ADK)",
+        ("python", "langgraph"): "🦜 Python (LangGraph)",
+        ("go", "adk"): "🔵 Go (ADK)",
+    }
+
+    console.print("\n> Please select an agent to get started:")
+
+    current_group = None
     for num, agent in agents.items():
-        console.print(
-            f"{num}. [bold]{agent['name']}[/] - [dim]{agent['description']}[/]"
-        )
+        agent_group = (agent["language"], agent["framework"])
+
+        # Print group header when transitioning to a new group
+        if agent_group != current_group:
+            current_group = agent_group
+            header = GROUP_HEADERS.get(agent_group, "Other")
+            console.print(f"\n  [bold cyan]{header}[/]")
+
+        # Align agent names for cleaner display
+        name_padded = agent["name"].ljust(14)
+        console.print(f"     {num}. [bold]{name_padded}[/] [dim]{agent['description']}[/]")
 
     # Add special option for adk-samples
     adk_samples_option = len(agents) + 1
+    console.print("\n  [bold cyan]🌐 Community[/]")
     console.print(
-        f"{adk_samples_option}. [bold]Browse agents from [link=https://github.com/google/adk-samples]google/adk-samples[/link][/] - [dim]Discover additional samples[/]"
+        f"     {adk_samples_option}. [bold][link=https://github.com/google/adk-samples]google/adk-samples[/link][/] [dim]Browse community agents[/]"
     )
 
     choice = IntPrompt.ask(
