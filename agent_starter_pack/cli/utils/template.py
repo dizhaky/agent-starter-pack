@@ -884,6 +884,7 @@ def process_template(
     agent_garden: bool = False,
     remote_spec: Any | None = None,
     google_api_key: str | None = None,
+    google_cloud_project: str | None = None,
 ) -> None:
     """Process the template directory and create a new project.
 
@@ -903,6 +904,7 @@ def process_template(
         cli_overrides: Optional CLI override values that should take precedence over template config
         agent_garden: Whether this deployment is from Agent Garden
         google_api_key: Optional Google AI Studio API key to generate .env file
+        google_cloud_project: Optional GCP project ID to populate .env file
     """
     logging.debug(f"Processing template from {template_dir}")
     logging.debug(f"Project name: {project_name}")
@@ -1218,6 +1220,7 @@ def process_template(
                 "agent_sample_id": agent_sample_id or "",
                 "agent_sample_publisher": agent_sample_publisher or "",
                 "use_google_api_key": bool(google_api_key),
+                "google_cloud_project": google_cloud_project or "your-gcp-project-id",
                 "adk_cheatsheet": adk_cheatsheet_content,
                 "llm_txt": llm_txt_content,
                 "_copy_without_render": [
@@ -1229,6 +1232,7 @@ def process_template(
                     "*.js",  # Don't render JavaScript files
                     "*.css",  # Don't render CSS files
                     "*.sum",  # Don't render Go sum files
+                    "e2e/**/*",  # Don't render Go e2e test files (contain Go {{ }} syntax)
                     "frontend/**/*",  # Don't render frontend directory recursively
                     "notebooks/*",  # Don't render notebooks directory
                     ".git/*",  # Don't render git directory
@@ -1595,47 +1599,54 @@ def process_template(
                     shutil.rmtree(notebooks_dir)
                     logging.debug(f"Prototype mode: deleted {notebooks_dir}")
 
-            # Handle pyproject.toml and uv.lock files
-            if is_remote and remote_template_path:
-                # For remote templates, use their pyproject.toml and uv.lock if they exist
-                remote_pyproject = remote_template_path / "pyproject.toml"
-                remote_uv_lock = remote_template_path / "uv.lock"
+            # Handle pyproject.toml and uv.lock files (Python only)
+            if language == "python":
+                if is_remote and remote_template_path:
+                    # For remote templates, use their pyproject.toml and uv.lock if they exist
+                    remote_pyproject = remote_template_path / "pyproject.toml"
+                    remote_uv_lock = remote_template_path / "uv.lock"
 
-                if remote_pyproject.exists():
-                    shutil.copy2(remote_pyproject, final_destination / "pyproject.toml")
-                    logging.debug("Used pyproject.toml from remote template")
+                    if remote_pyproject.exists():
+                        shutil.copy2(
+                            remote_pyproject, final_destination / "pyproject.toml"
+                        )
+                        logging.debug("Used pyproject.toml from remote template")
 
-                if remote_uv_lock.exists():
-                    shutil.copy2(remote_uv_lock, final_destination / "uv.lock")
-                    logging.debug("Used uv.lock from remote template")
-            elif deployment_target:
-                # For local templates, use the existing logic
-                lock_path = (
-                    pathlib.Path(__file__).parent.parent.parent
-                    / "resources"
-                    / "locks"
-                    / f"uv-{agent_name}-{deployment_target}.lock"
-                )
-                logging.debug(f"Looking for lock file at: {lock_path}")
-                logging.debug(f"Lock file exists: {lock_path.exists()}")
-                if not lock_path.exists():
-                    raise FileNotFoundError(f"Lock file not found: {lock_path}")
-                # Copy and rename to uv.lock in the project directory
-                shutil.copy2(lock_path, final_destination / "uv.lock")
-                logging.debug(
-                    f"Copied lock file from {lock_path} to {final_destination}/uv.lock"
-                )
-
-                # Replace cookiecutter project name with actual project name in lock file
-                lock_file_path = final_destination / "uv.lock"
-                with open(lock_file_path, "r+", encoding="utf-8") as lock_file:
-                    content = lock_file.read()
-                    lock_file.seek(0)
-                    lock_file.write(
-                        content.replace("{{cookiecutter.project_name}}", project_name)
+                    if remote_uv_lock.exists():
+                        shutil.copy2(remote_uv_lock, final_destination / "uv.lock")
+                        logging.debug("Used uv.lock from remote template")
+                elif deployment_target:
+                    # For local templates, use the existing logic
+                    lock_path = (
+                        pathlib.Path(__file__).parent.parent.parent
+                        / "resources"
+                        / "locks"
+                        / f"uv-{agent_name}-{deployment_target}.lock"
                     )
-                    lock_file.truncate()
-                logging.debug(f"Updated project name in lock file at {lock_file_path}")
+                    logging.debug(f"Looking for lock file at: {lock_path}")
+                    logging.debug(f"Lock file exists: {lock_path.exists()}")
+                    if not lock_path.exists():
+                        raise FileNotFoundError(f"Lock file not found: {lock_path}")
+                    # Copy and rename to uv.lock in the project directory
+                    shutil.copy2(lock_path, final_destination / "uv.lock")
+                    logging.debug(
+                        f"Copied lock file from {lock_path} to {final_destination}/uv.lock"
+                    )
+
+                    # Replace cookiecutter project name with actual project name in lock file
+                    lock_file_path = final_destination / "uv.lock"
+                    with open(lock_file_path, "r+", encoding="utf-8") as lock_file:
+                        content = lock_file.read()
+                        lock_file.seek(0)
+                        lock_file.write(
+                            content.replace(
+                                "{{cookiecutter.project_name}}", project_name
+                            )
+                        )
+                        lock_file.truncate()
+                    logging.debug(
+                        f"Updated project name in lock file at {lock_file_path}"
+                    )
 
             # Generate .env file for Google API Key if provided
             if google_api_key:

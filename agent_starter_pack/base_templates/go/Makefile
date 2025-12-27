@@ -16,9 +16,9 @@
 # Installation & Setup
 # ==============================================================================
 
-# Download Go module dependencies
+# Download Go module dependencies and generate go.sum
 install:
-	go mod download
+	go mod tidy
 
 # ==============================================================================
 # Playground Targets

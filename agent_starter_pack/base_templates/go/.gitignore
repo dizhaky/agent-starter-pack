@@ -24,6 +24,7 @@ go.work
 # Environment files
 .env
 .env.local
+!.env.example
 
 # Build artifacts
 dist/

@@ -873,6 +873,22 @@ def create(
                 console.print(
                     "> Continuing with template processing...", style="yellow"
                 )
+        elif skip_checks and not google_api_key and final_agent.endswith("_go"):
+            # For Go templates, try to get project ID from gcloud config even when skipping checks
+            # This is needed because Go's .env requires a valid project ID for local development
+            try:
+                result = subprocess.run(
+                    ["gcloud", "config", "get-value", "project"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                project_id = result.stdout.strip()
+                if project_id:
+                    creds_info = {"project": project_id}
+                    logging.debug(f"Got project ID from gcloud config: {project_id}")
+            except Exception as e:
+                logging.debug(f"Could not get project ID from gcloud: {e}")
 
         # Process template
         if not template_source_path:
@@ -916,6 +932,7 @@ def create(
                 agent_garden=agent_garden,
                 remote_spec=remote_spec,
                 google_api_key=google_api_key,
+                google_cloud_project=creds_info.get("project"),
             )
 
             # Replace region in all files if a different region was specified
