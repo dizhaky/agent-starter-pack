@@ -43,8 +43,11 @@ A Go agent built with Google's Agent Development Kit (ADK).
 │   └── terraform/       # Infrastructure as Code
 ├── go.mod               # Go module definition
 ├── Dockerfile           # Container build
+├── GEMINI.md            # AI-assisted development guide
 └── Makefile             # Common commands
 ```
+
+> **Tip:** Use [Gemini CLI](https://github.com/google-gemini/gemini-cli) for AI-assisted development - project context is pre-configured in `GEMINI.md`.
 
 ## Development Commands
 
