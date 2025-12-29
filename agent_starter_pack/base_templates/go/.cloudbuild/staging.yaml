@@ -45,9 +45,6 @@ steps:
       - "${_REGION}"
       - "--project"
       - "${_STAGING_PROJECT_ID}"
-      - "--service-account"
-      - "${_APP_SERVICE_ACCOUNT_STAGING}"
-      - "--no-allow-unauthenticated"
 
   # Fetch Staging Service URL
   - name: "gcr.io/cloud-builders/gcloud"

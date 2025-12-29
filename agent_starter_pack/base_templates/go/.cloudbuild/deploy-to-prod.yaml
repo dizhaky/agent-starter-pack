@@ -27,9 +27,6 @@ steps:
       - "${_REGION}"
       - "--project"
       - "${_PROD_PROJECT_ID}"
-      - "--service-account"
-      - "${_APP_SERVICE_ACCOUNT_PROD}"
-      - "--no-allow-unauthenticated"
 
 substitutions:
   _PROD_PROJECT_ID: YOUR_PROD_PROJECT_ID
