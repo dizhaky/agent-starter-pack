@@ -316,11 +316,15 @@ def get_available_agents(deployment_target: str | None = None) -> dict:
     agents_list = []
     priority_agents_dict = dict.fromkeys(PRIORITY_AGENTS)  # Track priority agents
     agents_dir = pathlib.Path(__file__).parent.parent.parent / "agents"
+    print(f"Searching for agents in: {agents_dir}")
 
     for agent_dir in agents_dir.iterdir():
+        print(f"Checking directory: {agent_dir}")
         if agent_dir.is_dir() and not agent_dir.name.startswith("__"):
             template_config_path = agent_dir / ".template" / "templateconfig.yaml"
+            print(f"Checking for config file: {template_config_path}")
             if template_config_path.exists():
+                print(f"Found config file: {template_config_path}")
                 try:
                     with open(template_config_path, encoding="utf-8") as f:
                         config = yaml.safe_load(f)
@@ -346,6 +350,8 @@ def get_available_agents(deployment_target: str | None = None) -> dict:
                         agents_list.append(agent_info)
                 except Exception as e:
                     logging.warning(f"Could not load agent from {agent_dir}: {e}")
+            else:
+                print(f"Config file not found: {template_config_path}")
 
     # Sort the non-priority agents
     agents_list.sort(key=lambda x: x["name"])

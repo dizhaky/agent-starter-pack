@@ -298,14 +298,14 @@ class TestMakefileGeneration:
 
         # Load or create hash registry
         if hash_file.exists():
-            hashes = json.loads(hash_file.read_text())
+            hashes = json.loads(hash_file.read_text(encoding="utf-8"))
         else:
             hashes = {}
 
         if config_name not in hashes:
             # Save new hash
             hashes[config_name] = output_hash
-            hash_file.write_text(json.dumps(hashes, indent=2, sort_keys=True))
+            hash_file.write_text(json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8")
             pytest.skip(f"Created new hash for {config_name}")
 
         # Compare hashes

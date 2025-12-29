@@ -503,7 +503,7 @@ class TestEnhanceAgentDirectoryPrompt:
 
         with runner.isolated_filesystem():
             pathlib.Path("app").mkdir()
-            pathlib.Path("app/agent.py").write_text("root_agent = None")
+            pathlib.Path("app/agent.py").write_text("root_agent = None", encoding="utf-8")
 
             with patch("agent_starter_pack.cli.commands.enhance.create"):
                 runner.invoke(
@@ -537,7 +537,7 @@ class TestEnhanceAgentDirectoryPrompt:
 
         with runner.isolated_filesystem():
             pathlib.Path("app").mkdir()
-            pathlib.Path("app/agent.py").write_text("agent = None")
+            pathlib.Path("app/agent.py").write_text("agent = None", encoding="utf-8")
 
             with patch("agent_starter_pack.cli.commands.enhance.create"):
                 runner.invoke(
