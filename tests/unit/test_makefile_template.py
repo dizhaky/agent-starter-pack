@@ -305,7 +305,9 @@ class TestMakefileGeneration:
         if config_name not in hashes:
             # Save new hash
             hashes[config_name] = output_hash
-            hash_file.write_text(json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8")
+            hash_file.write_text(
+                json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8"
+            )
             pytest.skip(f"Created new hash for {config_name}")
 
         # Compare hashes
