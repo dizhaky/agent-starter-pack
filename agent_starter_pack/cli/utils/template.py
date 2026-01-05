@@ -916,6 +916,9 @@ def process_template(
         logging.debug(f"Using base template override: {base_template_name}")
     else:
         # For local templates, use the existing logic
+        base_template_name = (
+            agent_name  # agent_name is the base template for local templates
+        )
         agent_path = template_dir.parent  # Get parent of template dir
 
     logging.debug(f"agent path: {agent_path}")
@@ -1249,7 +1252,7 @@ def process_template(
                 logging.debug("Remote template files copied successfully")
 
                 # Handle ADK agent compatibility
-                is_adk = "adk" in tags
+                is_adk = "adk" in base_template_name.lower()
                 agent_py_path = generated_project_dir / agent_directory / "agent.py"
                 root_agent_yaml = (
                     generated_project_dir / agent_directory / "root_agent.yaml"
